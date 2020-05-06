@@ -1,5 +1,11 @@
-*.tfstate
-lock.json
-*.exe
-modules.json
-*.backup
+*.tfstate*
+.terraform
+.idea
+tmp
+*.key
+*.ppk
+*.pem
+*.pub
+*.iml
+local.auto.tfvars
+output/*
