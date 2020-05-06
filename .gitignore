@@ -1,0 +1,5 @@
+*.tfstate
+lock.json
+*.exe
+modules.json
+*.backup
