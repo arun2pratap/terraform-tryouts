@@ -28,14 +28,14 @@ POLICY
 }
 
 resource "aws_s3_bucket_object" "index_html" {
-  bucket = var.website_domain
+  bucket = aws_s3_bucket.website_bucket.bucket
   key = "index.html"
   content_type = "text/html"
   source = "index.html"
 }
 
 resource "aws_s3_bucket_object" "error_html" {
-  bucket = var.website_domain
+  bucket = aws_s3_bucket.website_bucket.bucket
   key = "error.html"
   content_type = "text/html"
   source = "error.html"

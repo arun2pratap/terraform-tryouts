@@ -7,5 +7,6 @@ tmp
 *.pem
 *.pub
 *.iml
+*.zip
 local.auto.tfvars
 output/*
