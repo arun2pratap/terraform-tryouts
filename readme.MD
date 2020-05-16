@@ -53,3 +53,25 @@ Terraform
      }
 ```
 * Deploying the same, It does give some exception because terraform was not able to deploy that in the right sequence, had to give depends_on = [] tag to control that behaviour.
+
+* Downloading api gateway SDK from  STAGE -> generator generator- and will use that in our script's
+* ##### Preparing for cognito , removing hardcorded value fo 'Student' from .js files and updating the reuquest_templates for the same. 
+* 
+  "application/json" : <<EOF
+{
+  "cognitoUsername":"Student"
+}
+EOF
+
+request_templates = {
+    #    "application/json" :  "#set($inputRoot = $input.path('$'))    {    \"id\": \"$input.params('id')\",    \"message\": \"$inputRoot\"  }"
+    "application/json" :  <<EOF
+  #set($inputRoot = $input.path('$'))
+  {
+      "id": "$input.params('id')",
+      "message": "$inputRoot",
+      "cognitoUsername": "Student"
+  }
+EOF
+  }
+  

@@ -145,8 +145,13 @@ resource "aws_api_gateway_integration" "integration" {
   http_method = aws_api_gateway_method.method.http_method
   # ANY won't work for integration_http_method
   integration_http_method = "POST"
+  passthrough_behavior = "WHEN_NO_TEMPLATES"
   request_templates = {
-    "application/json" : "{\"statusCode\": 200}"
+    "application/json" : <<EOF
+{
+  "cognitoUsername":"Student"
+}
+EOF
   }
   type = "AWS"
   uri = aws_lambda_function.lambda_conversation_get.invoke_arn
@@ -191,6 +196,11 @@ resource "aws_api_gateway_method_response" "options_200" {
   response_models = {
     "application/json" = aws_api_gateway_model.converstaionList.name
   }
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true,
+    "method.response.header.Access-Control-Allow-Methods" = true,
+    "method.response.header.Access-Control-Allow-Origin" = true
+  }
 }
 
 resource "aws_api_gateway_integration_response" "options_integration_response" {
@@ -198,6 +208,11 @@ resource "aws_api_gateway_integration_response" "options_integration_response" {
   resource_id = aws_api_gateway_resource.resource.id
   http_method = aws_api_gateway_method.method.http_method
   status_code = aws_api_gateway_method_response.options_200.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS,POST,PUT'",
+    "method.response.header.Access-Control-Allow-Origin" = "'*'"
+  }
 }
 
 # create another child resource
@@ -225,11 +240,14 @@ resource "aws_api_gateway_integration" "integration_conv_get" {
   passthrough_behavior = "WHEN_NO_TEMPLATES"
   # velocity parameter read's path variable and generate param as needed.
   request_templates = {
-    "application/json": "#set($inputRoot = $input.path('$'))    {    \"id\": \"$input.params('id')\"  }"
+    "application/json": <<EOF
+#set($inputRoot = $input.path('$'))
+{
+    "id": "$input.params('id')"
+}
+  EOF
   }
-//  request_templates = {
-//    "application/json" : "{\"statusCode\": 200}"
-//  }
+
   type = "AWS"
   uri = aws_lambda_function.lambda_message_get.invoke_arn
 }
@@ -287,6 +305,11 @@ resource "aws_api_gateway_method_response" "response_conv_get" {
   response_models = {
     "application/json" = aws_api_gateway_model.conversations.name
   }
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true,
+    "method.response.header.Access-Control-Allow-Methods" = true,
+    "method.response.header.Access-Control-Allow-Origin" = true
+  }
 }
 
 resource "aws_api_gateway_integration_response" "integration_res_conv_get" {
@@ -294,6 +317,11 @@ resource "aws_api_gateway_integration_response" "integration_res_conv_get" {
   resource_id = aws_api_gateway_resource.resource_conv.id
   http_method = aws_api_gateway_method.method_conv_GET.http_method
   status_code = aws_api_gateway_method_response.response_conv_get.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS,POST,PUT'",
+    "method.response.header.Access-Control-Allow-Origin" = "'*'"
+  }
 }
 ### post API gateway flow
 
@@ -326,7 +354,15 @@ resource "aws_api_gateway_integration" "integration_conv_post" {
   # velocity parameter read's path variable and generate param as needed.
   passthrough_behavior = "WHEN_NO_TEMPLATES"
   request_templates = {
-    "application/json" :  "#set($inputRoot = $input.path('$'))    {    \"id\": \"$input.params('id')\",    \"message\": \"$inputRoot\"  }"
+    #    "application/json" :  "#set($inputRoot = $input.path('$'))    {    \"id\": \"$input.params('id')\",    \"message\": \"$inputRoot\"  }"
+    "application/json" :  <<EOF
+  #set($inputRoot = $input.path('$'))
+  {
+      "id": "$input.params('id')",
+      "message": "$inputRoot",
+      "cognitoUsername": "Student"
+  }
+EOF
   }
   type = "AWS"
   uri = aws_lambda_function.lambda_message_post.invoke_arn
@@ -340,6 +376,11 @@ resource "aws_api_gateway_method_response" "response_conv_post" {
   response_models = {
     "application/json" = "Empty"
   }
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true,
+    "method.response.header.Access-Control-Allow-Methods" = true,
+    "method.response.header.Access-Control-Allow-Origin" = true
+  }
 }
 
 resource "aws_api_gateway_integration_response" "integration_res_conv_post" {
@@ -347,6 +388,11 @@ resource "aws_api_gateway_integration_response" "integration_res_conv_post" {
   resource_id = aws_api_gateway_resource.resource_conv.id
   http_method = aws_api_gateway_method.method_conv_POST.http_method
   status_code = aws_api_gateway_method_response.response_conv_post.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS,POST,PUT'",
+    "method.response.header.Access-Control-Allow-Origin" = "'*'"
+  }
 }
 ##############
 
@@ -470,6 +516,9 @@ resource "aws_api_gateway_deployment" "deployment" {
     ]
   rest_api_id = aws_api_gateway_rest_api.api.id
   stage_name = "Dev"
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 ###### dynamo db  tables for lambda to read from UNCOMMENT the code below
