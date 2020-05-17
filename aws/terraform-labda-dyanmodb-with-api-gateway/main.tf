@@ -1,8 +1,71 @@
 provider "aws" {
   region = var.region
 }
+#####CREATE COGNITO USER#######
 
-#####
+# cognito user_pool
+
+resource "aws_cognito_user_pool" "pool" {
+  name = "pool_2"
+
+  admin_create_user_config {
+    allow_admin_create_user_only = false
+    //    invite_message_template {
+    //      email_message = "Your username is {username} and temporary password is {####}. "
+    //      email_subject = "Your temporary password"
+    //    }
+  }
+  alias_attributes = [
+    "email"]
+  auto_verified_attributes = [
+    "email"]
+  schema {
+    attribute_data_type = "String"
+    developer_only_attribute = false
+    mutable = true
+    name = "email"
+    number_attribute_constraints {}
+    required = true
+    string_attribute_constraints {
+      max_length = "2048"
+      min_length = "0"
+    }
+  }
+  email_configuration {
+    email_sending_account = "COGNITO_DEFAULT"
+  }
+  email_verification_message = "Your verification code is {####}. "
+  email_verification_subject = "Your verification code"
+  mfa_configuration = "OFF"
+  password_policy {
+    minimum_length = 6
+    require_lowercase = false
+    require_numbers = false
+    require_symbols = false
+    require_uppercase = false
+    temporary_password_validity_days = 7
+  }
+  //  verification_message_template {
+  //    default_email_option = "CONFIRM_WITH_CODE"
+  //    email_message = "Your verification code is {####}. "
+  //    email_subject = "Your verification code"
+  //  }
+}
+
+
+resource "aws_cognito_user_pool_client" "client" {
+  name = "webiste_02"
+  user_pool_id = aws_cognito_user_pool.pool.id
+  prevent_user_existence_errors = "ENABLED"
+  read_attributes = [
+    "email",
+    "email_verified"]
+  write_attributes = [
+    "email"]
+  generate_secret = false
+}
+
+########## end Create Congntio user
 resource "aws_iam_role" "role" {
   name = "dummy-lambda"
 
@@ -26,6 +89,10 @@ EOF
 resource "aws_iam_role_policy_attachment" "lambda_attach_policy_basicExecutionRole" {
   role = aws_iam_role.role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+resource "aws_iam_role_policy_attachment" "lambda_attach_policy_cognito_readOnly" {
+  role = aws_iam_role.role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonCognitoReadOnly"
 }
 
 resource "aws_iam_role_policy_attachment" "lambda_attach_policy_dynamoDB" {
@@ -79,8 +146,6 @@ resource "aws_lambda_permission" "apigw_lambda_message_get" {
   function_name = aws_lambda_function.lambda_message_get.function_name
   principal = "apigateway.amazonaws.com"
   source_arn = "${aws_api_gateway_rest_api.api.execution_arn}/*/*/*"
-  # More: http://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-control-access-using-iam-policies-to-invoke-api.html
-  #  source_arn = "arn:aws:execute-api:${var.region}:${var.accountId}:${aws_api_gateway_rest_api.api.id}/*/${aws_api_gateway_method.method.http_method}${aws_api_gateway_resource.resource.path}"
 }
 # lambda function post
 
@@ -105,8 +170,53 @@ resource "aws_lambda_permission" "apigw_lambda_message_post" {
   function_name = aws_lambda_function.lambda_message_post.function_name
   principal = "apigateway.amazonaws.com"
   source_arn = "${aws_api_gateway_rest_api.api.execution_arn}/*/*/*"
-  # More: http://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-control-access-using-iam-policies-to-invoke-api.html
-  #  source_arn = "arn:aws:execute-api:${var.region}:${var.accountId}:${aws_api_gateway_rest_api.api.id}/*/${aws_api_gateway_method.method.http_method}${aws_api_gateway_resource.resource.path}"
+}
+# lambda function get cognito user list
+data "archive_file" "lambda_cognito_zip" {
+  type = "zip"
+  source_file = "lambda/Chat-Users-Get.js"
+  output_path = "lambda_function_users_get.zip"
+}
+
+resource "aws_lambda_function" "lambda_users_get" {
+  function_name = "Chat-Users-Get"
+  filename = "lambda_function_users_get.zip"
+  handler = "Chat-Users-Get.handler"
+  role = aws_iam_role.role.arn
+  runtime = "nodejs12.x"
+  source_code_hash = filebase64sha256("lambda/Chat-Users-Get.js")
+}
+resource "aws_lambda_permission" "apigw_lambda_cognito_post" {
+  statement_id = "AllowExecutionFromAPIGateway"
+  action = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.lambda_users_get.function_name
+  principal = "apigateway.amazonaws.com"
+  source_arn = "${aws_api_gateway_rest_api.api.execution_arn}/*/*/*"
+}
+##############
+
+# lambda function get cognito user list
+data "archive_file" "lambda_conv_post_zip" {
+  type = "zip"
+  source_file = "lambda/Chat-Conversation-POST.js"
+  output_path = "lambda_function_conv_post_get.zip"
+}
+
+resource "aws_lambda_function" "lambda_conv_post" {
+  function_name = "Chat-Conversation-POST"
+  filename = "lambda_function_conv_post_get.zip"
+  handler = "Chat-Conversation-POST.handler"
+  role = aws_iam_role.role.arn
+  runtime = "nodejs12.x"
+  source_code_hash = filebase64sha256("lambda/Chat-Conversation-POST.js")
+}
+
+resource "aws_lambda_permission" "apigw_lambda_conv_post" {
+  statement_id = "AllowExecutionFromAPIGateway"
+  action = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.lambda_conv_post.function_name
+  principal = "apigateway.amazonaws.com"
+  source_arn = "${aws_api_gateway_rest_api.api.execution_arn}/*/*/*"
 }
 # --- end lamdba policy/role for  -------
 
@@ -129,6 +239,7 @@ resource "aws_api_gateway_resource" "resource" {
   parent_id = aws_api_gateway_rest_api.api.root_resource_id
   rest_api_id = aws_api_gateway_rest_api.api.id
 }
+
 # --- lambda integration -------------
 
 #https://www.terraform.io/docs/providers/aws/r/api_gateway_method.html
@@ -188,7 +299,7 @@ resource "aws_api_gateway_model" "converstaionList" {
 EOF
 }
 
-resource "aws_api_gateway_method_response" "options_200" {
+resource "aws_api_gateway_method_response" "response" {
   rest_api_id = aws_api_gateway_rest_api.api.id
   resource_id = aws_api_gateway_resource.resource.id
   http_method = aws_api_gateway_method.method.http_method
@@ -203,18 +314,79 @@ resource "aws_api_gateway_method_response" "options_200" {
   }
 }
 
-resource "aws_api_gateway_integration_response" "options_integration_response" {
+resource "aws_api_gateway_integration_response" "integration_response" {
   rest_api_id = aws_api_gateway_rest_api.api.id
   resource_id = aws_api_gateway_resource.resource.id
   http_method = aws_api_gateway_method.method.http_method
-  status_code = aws_api_gateway_method_response.options_200.status_code
+  status_code = aws_api_gateway_method_response.response.status_code
   response_parameters = {
     "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
     "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS,POST,PUT'",
     "method.response.header.Access-Control-Allow-Origin" = "'*'"
   }
 }
+# end of converstaions GET
+# start for conversations POST
 
+//resource "aws_api_gateway_method" "method_conv_POST" {
+//  rest_api_id = aws_api_gateway_rest_api.api.id
+//  resource_id = aws_api_gateway_resource.resource_conv.id
+//  http_method = "POST"
+//  authorization = "NONE"
+//  request_models = {
+//    "application/json" : aws_api_gateway_model.newMessage.name
+//  }
+//}
+//resource "aws_api_gateway_integration" "integration_conv_post" {
+//  rest_api_id = aws_api_gateway_rest_api.api.id
+//  resource_id = aws_api_gateway_resource.resource_conv.id
+//  http_method = aws_api_gateway_method.method_conv_POST.http_method
+//  integration_http_method = "POST"
+//  # velocity parameter read's path variable and generate param as needed.
+//  passthrough_behavior = "WHEN_NO_TEMPLATES"
+//  request_templates = {
+//    #    "application/json" :  "#set($inputRoot = $input.path('$'))    {    \"id\": \"$input.params('id')\",    \"message\": \"$inputRoot\"  }"
+//    "application/json" :  <<EOF
+//  #set($inputRoot = $input.path('$'))
+//  {
+//      "id": "$input.params('id')",
+//      "message": "$inputRoot",
+//      "cognitoUsername": "Student"
+//  }
+//EOF
+//  }
+//  type = "AWS"
+//  uri = aws_lambda_function.lambda_message_post.invoke_arn
+//}
+//
+//resource "aws_api_gateway_method_response" "response_conv_post" {
+//  rest_api_id = aws_api_gateway_rest_api.api.id
+//  resource_id = aws_api_gateway_resource.resource_conv.id
+//  http_method = aws_api_gateway_method.method_conv_POST.http_method
+//  status_code = 204
+//  response_models = {
+//    "application/json" = "Empty"
+//  }
+//  response_parameters = {
+//    "method.response.header.Access-Control-Allow-Headers" = true,
+//    "method.response.header.Access-Control-Allow-Methods" = true,
+//    "method.response.header.Access-Control-Allow-Origin" = true
+//  }
+//}
+//
+//resource "aws_api_gateway_integration_response" "integration_res_conv_post" {
+//  rest_api_id = aws_api_gateway_rest_api.api.id
+//  resource_id = aws_api_gateway_resource.resource_conv.id
+//  http_method = aws_api_gateway_method.method_conv_POST.http_method
+//  status_code = aws_api_gateway_method_response.response_conv_post.status_code
+//  response_parameters = {
+//    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
+//    "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS,POST,PUT'",
+//    "method.response.header.Access-Control-Allow-Origin" = "'*'"
+//  }
+//}
+
+#end for conversations POST
 # create another child resource
 
 resource "aws_api_gateway_resource" "resource_conv" {
@@ -394,7 +566,79 @@ resource "aws_api_gateway_integration_response" "integration_res_conv_post" {
     "method.response.header.Access-Control-Allow-Origin" = "'*'"
   }
 }
-##############
+######### cognito API gateway configuration's #####
+
+resource "aws_api_gateway_resource" "resource_users" {
+  path_part = "users"
+  parent_id = aws_api_gateway_rest_api.api.root_resource_id
+  rest_api_id = aws_api_gateway_rest_api.api.id
+}
+
+resource "aws_api_gateway_method" "method_users" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.resource_users.id
+  http_method = "GET"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "integration_users" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.resource_users.id
+  http_method = aws_api_gateway_method.method_users.http_method
+  # ANY won't work for integration_http_method
+  integration_http_method = "POST"
+//  passthrough_behavior = "WHEN_NO_TEMPLATES"
+//  request_templates = {
+//    "application/json" : "Empty"
+//  }
+  type = "AWS"
+  uri = aws_lambda_function.lambda_users_get.invoke_arn
+}
+
+resource "aws_api_gateway_model" "userList" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  name = "usersList"
+  description = "a JSON schema"
+  content_type = "application/json"
+  schema = <<EOF
+{
+  "type":"array",
+  "items": {
+    "type":"string"
+  }
+}
+EOF
+}
+
+
+resource "aws_api_gateway_method_response" "response_users" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.resource_users.id
+  http_method = aws_api_gateway_method.method_users.http_method
+  status_code = "200"
+  response_models = {
+    "application/json" = aws_api_gateway_model.userList.name
+  }
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true,
+    "method.response.header.Access-Control-Allow-Methods" = true,
+    "method.response.header.Access-Control-Allow-Origin" = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "integration_response_users" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.resource_users.id
+  http_method = aws_api_gateway_method.method_users.http_method
+  status_code = aws_api_gateway_method_response.response_users.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS,POST,PUT'",
+    "method.response.header.Access-Control-Allow-Origin" = "'*'"
+  }
+}
+
+#################
 
 # --- Mock Integration for Enable CORS for resource /converstations
 
@@ -490,29 +734,94 @@ resource "aws_api_gateway_integration_response" "integration_res_conv_cors" {
 }
 ############
 
+
+# --- Mock Integration for Enable CORS for resource /users
+
+resource "aws_api_gateway_method" "method_users_cors" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.resource_users.id
+  http_method = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "integration_users_cors" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.resource_users.id
+  http_method = aws_api_gateway_method.method_users_cors.http_method
+  type = "MOCK"
+  request_templates = {
+    "application/json": "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "response_users_cors" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.resource_users.id
+  http_method = aws_api_gateway_method.method_users_cors.http_method
+  status_code = "200"
+  response_models = {
+    "application/json" = "Empty"
+  }
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true,
+    "method.response.header.Access-Control-Allow-Methods" = true,
+    "method.response.header.Access-Control-Allow-Origin" = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "integration_users_res_cors" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.resource_users.id
+  http_method = aws_api_gateway_method.method_users_cors.http_method
+  status_code = aws_api_gateway_method_response.response_users_cors.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS,POST,PUT'",
+    "method.response.header.Access-Control-Allow-Origin" = "'*'"
+  }
+}
+############
+
 # dploy lambda funciton
+# aws_api_gateway_deployment is flaky try commenting/un-commenting depends_on it works, yup silly but it works, terraform mess up the sequence of resource.
 resource "aws_api_gateway_deployment" "deployment" {
     depends_on = [
       aws_api_gateway_resource.resource,
+      aws_api_gateway_resource.resource_users,
       aws_api_gateway_resource.resource_conv,
+
       aws_api_gateway_method.method,
       aws_api_gateway_method.method_conv_GET,
       aws_api_gateway_method.method_conv_POST,
+      aws_api_gateway_method.method_users,
       aws_api_gateway_method.method_cors,
       aws_api_gateway_method.method_conv_cors,
-      aws_api_gateway_method_response.options_200,
+      aws_api_gateway_method.method_users_cors,
+
+      aws_api_gateway_method_response.response,
       aws_api_gateway_method_response.response_cors,
       aws_api_gateway_method_response.response_conv_cors,
       aws_api_gateway_method_response.response_conv_get,
       aws_api_gateway_method_response.response_conv_post,
+      aws_api_gateway_method_response.response_users,
+      aws_api_gateway_method_response.response_users_cors,
+
       aws_api_gateway_integration.integration,
+      aws_api_gateway_integration.integration_users,
+      aws_api_gateway_integration.integration_conv_get,
+      aws_api_gateway_integration.integration_conv_post,
       aws_api_gateway_integration.integration_cors,
       aws_api_gateway_integration.integration_conv_cors,
-      aws_api_gateway_integration_response.options_integration_response,
+      aws_api_gateway_integration.integration_users_cors,
+
+
+      aws_api_gateway_integration_response.integration_response,
+      aws_api_gateway_integration_response.integration_response_users,
       aws_api_gateway_integration_response.integration_res_conv_get,
       aws_api_gateway_integration_response.integration_res_conv_post,
       aws_api_gateway_integration_response.integration_res_cors,
-      aws_api_gateway_integration_response.integration_res_conv_cors
+      aws_api_gateway_integration_response.integration_res_conv_cors,
+      aws_api_gateway_integration_response.integration_users_res_cors
     ]
   rest_api_id = aws_api_gateway_rest_api.api.id
   stage_name = "Dev"

@@ -75,3 +75,9 @@ request_templates = {
 EOF
   }
   
+  * creating cognito user pool
+    * Lmabda function for the same read user's
+    * Attaching cognito read policy to lambda  
+    * API gateway configuration for the same
+  * Another lambda function to post conversation to DynamoDB
+    * POst API gateway for the same.
