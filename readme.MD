@@ -80,4 +80,6 @@ EOF
     * Attaching cognito read policy to lambda  
     * API gateway configuration for the same
   * Another lambda function to post conversation to DynamoDB
-    * POst API gateway for the same.
+    * API gateway configuration for the same.
+    
+   

@@ -195,16 +195,16 @@ resource "aws_lambda_permission" "apigw_lambda_cognito_post" {
 }
 ##############
 
-# lambda function get cognito user list
+# lambda function post cognito user list to dynamodb
 data "archive_file" "lambda_conv_post_zip" {
   type = "zip"
   source_file = "lambda/Chat-Conversation-POST.js"
-  output_path = "lambda_function_conv_post_get.zip"
+  output_path = "lambda_function_converstaion_post.zip"
 }
 
-resource "aws_lambda_function" "lambda_conv_post" {
+resource "aws_lambda_function" "lambda_conversation_post" {
   function_name = "Chat-Conversation-POST"
-  filename = "lambda_function_conv_post_get.zip"
+  filename = "lambda_function_converstaion_post.zip"
   handler = "Chat-Conversation-POST.handler"
   role = aws_iam_role.role.arn
   runtime = "nodejs12.x"
@@ -214,7 +214,7 @@ resource "aws_lambda_function" "lambda_conv_post" {
 resource "aws_lambda_permission" "apigw_lambda_conv_post" {
   statement_id = "AllowExecutionFromAPIGateway"
   action = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.lambda_conv_post.function_name
+  function_name = aws_lambda_function.lambda_conversation_post.function_name
   principal = "apigateway.amazonaws.com"
   source_arn = "${aws_api_gateway_rest_api.api.execution_arn}/*/*/*"
 }
@@ -268,7 +268,7 @@ EOF
   uri = aws_lambda_function.lambda_conversation_get.invoke_arn
 }
 
-resource "aws_api_gateway_model" "converstaionList" {
+resource "aws_api_gateway_model" "conversationList" {
   rest_api_id = aws_api_gateway_rest_api.api.id
   name = "ConverstationList"
   description = "a JSON schema"
@@ -305,7 +305,7 @@ resource "aws_api_gateway_method_response" "response" {
   http_method = aws_api_gateway_method.method.http_method
   status_code = "200"
   response_models = {
-    "application/json" = aws_api_gateway_model.converstaionList.name
+    "application/json" = aws_api_gateway_model.conversationList.name
   }
   response_parameters = {
     "method.response.header.Access-Control-Allow-Headers" = true,
@@ -328,63 +328,92 @@ resource "aws_api_gateway_integration_response" "integration_response" {
 # end of converstaions GET
 # start for conversations POST
 
-//resource "aws_api_gateway_method" "method_conv_POST" {
-//  rest_api_id = aws_api_gateway_rest_api.api.id
-//  resource_id = aws_api_gateway_resource.resource_conv.id
-//  http_method = "POST"
-//  authorization = "NONE"
-//  request_models = {
-//    "application/json" : aws_api_gateway_model.newMessage.name
-//  }
-//}
-//resource "aws_api_gateway_integration" "integration_conv_post" {
-//  rest_api_id = aws_api_gateway_rest_api.api.id
-//  resource_id = aws_api_gateway_resource.resource_conv.id
-//  http_method = aws_api_gateway_method.method_conv_POST.http_method
-//  integration_http_method = "POST"
-//  # velocity parameter read's path variable and generate param as needed.
-//  passthrough_behavior = "WHEN_NO_TEMPLATES"
-//  request_templates = {
-//    #    "application/json" :  "#set($inputRoot = $input.path('$'))    {    \"id\": \"$input.params('id')\",    \"message\": \"$inputRoot\"  }"
-//    "application/json" :  <<EOF
-//  #set($inputRoot = $input.path('$'))
-//  {
-//      "id": "$input.params('id')",
-//      "message": "$inputRoot",
-//      "cognitoUsername": "Student"
-//  }
-//EOF
-//  }
-//  type = "AWS"
-//  uri = aws_lambda_function.lambda_message_post.invoke_arn
-//}
-//
-//resource "aws_api_gateway_method_response" "response_conv_post" {
-//  rest_api_id = aws_api_gateway_rest_api.api.id
-//  resource_id = aws_api_gateway_resource.resource_conv.id
-//  http_method = aws_api_gateway_method.method_conv_POST.http_method
-//  status_code = 204
-//  response_models = {
-//    "application/json" = "Empty"
-//  }
-//  response_parameters = {
-//    "method.response.header.Access-Control-Allow-Headers" = true,
-//    "method.response.header.Access-Control-Allow-Methods" = true,
-//    "method.response.header.Access-Control-Allow-Origin" = true
-//  }
-//}
-//
-//resource "aws_api_gateway_integration_response" "integration_res_conv_post" {
-//  rest_api_id = aws_api_gateway_rest_api.api.id
-//  resource_id = aws_api_gateway_resource.resource_conv.id
-//  http_method = aws_api_gateway_method.method_conv_POST.http_method
-//  status_code = aws_api_gateway_method_response.response_conv_post.status_code
-//  response_parameters = {
-//    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
-//    "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS,POST,PUT'",
-//    "method.response.header.Access-Control-Allow-Origin" = "'*'"
-//  }
-//}
+resource "aws_api_gateway_model" "newConversation" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  name = "newConversation"
+  description = "a JSON schema"
+  content_type = "application/json"
+
+  schema = <<EOF
+{
+  "type": "array",
+  "items": {
+    "type": "string"
+  }
+}
+EOF
+}
+
+resource "aws_api_gateway_method" "method_post" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.resource.id
+  http_method = "POST"
+  authorization = "NONE"
+  request_models = {
+    "application/json" : aws_api_gateway_model.newConversation.name
+  }
+}
+resource "aws_api_gateway_integration" "integration_post" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.resource.id
+  http_method = aws_api_gateway_method.method_post.http_method
+  integration_http_method = "POST"
+  passthrough_behavior = "WHEN_NO_TEMPLATES"
+  # velocity parameter read's path variable and generate param as needed.
+  request_templates = {
+    "application/json": <<EOF
+#set($inputRoot = $input.path('$'))
+{
+"cognitoUsername": "Student",
+"users":
+[
+#foreach($elem in $inputRoot)
+ "$elem"
+#if($foreach.hasNext),#end
+#end
+]
+}
+  EOF
+  }
+  # velocity parameter read's path variable and generate param as needed.
+  type = "AWS"
+  uri = aws_lambda_function.lambda_conversation_post.invoke_arn
+}
+resource "aws_api_gateway_model" "conversationId" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  name = "conversationId"
+  description = "a JSON schema"
+  content_type = "application/json"
+  schema = <<EOF
+{"type":"string"}
+EOF
+}
+resource "aws_api_gateway_method_response" "response_post" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.resource.id
+  http_method = aws_api_gateway_method.method_post.http_method
+  status_code = 204
+  response_models = {
+    "application/json" = aws_api_gateway_model.conversationId.name
+  }
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true,
+    "method.response.header.Access-Control-Allow-Methods" = true,
+    "method.response.header.Access-Control-Allow-Origin" = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "integration_response_post" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.resource.id
+  http_method = aws_api_gateway_method.method_post.http_method
+  status_code = aws_api_gateway_method_response.response_post.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS,POST,PUT'",
+    "method.response.header.Access-Control-Allow-Origin" = "'*'"
+  }
+}
 
 #end for conversations POST
 # create another child resource
@@ -495,7 +524,7 @@ resource "aws_api_gateway_integration_response" "integration_res_conv_get" {
     "method.response.header.Access-Control-Allow-Origin" = "'*'"
   }
 }
-### post API gateway flow
+### MESSAGE post API gateway flow
 
 resource "aws_api_gateway_model" "newMessage" {
   rest_api_id = aws_api_gateway_rest_api.api.id
@@ -526,7 +555,6 @@ resource "aws_api_gateway_integration" "integration_conv_post" {
   # velocity parameter read's path variable and generate param as needed.
   passthrough_behavior = "WHEN_NO_TEMPLATES"
   request_templates = {
-    #    "application/json" :  "#set($inputRoot = $input.path('$'))    {    \"id\": \"$input.params('id')\",    \"message\": \"$inputRoot\"  }"
     "application/json" :  <<EOF
   #set($inputRoot = $input.path('$'))
   {
@@ -559,7 +587,7 @@ resource "aws_api_gateway_integration_response" "integration_res_conv_post" {
   rest_api_id = aws_api_gateway_rest_api.api.id
   resource_id = aws_api_gateway_resource.resource_conv.id
   http_method = aws_api_gateway_method.method_conv_POST.http_method
-  status_code = aws_api_gateway_method_response.response_conv_post.status_code
+  status_code = aws_api_gateway_method_response.response_post.status_code
   response_parameters = {
     "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
     "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS,POST,PUT'",
@@ -791,6 +819,7 @@ resource "aws_api_gateway_deployment" "deployment" {
       aws_api_gateway_resource.resource_conv,
 
       aws_api_gateway_method.method,
+      aws_api_gateway_method.method_post,
       aws_api_gateway_method.method_conv_GET,
       aws_api_gateway_method.method_conv_POST,
       aws_api_gateway_method.method_users,
@@ -799,6 +828,7 @@ resource "aws_api_gateway_deployment" "deployment" {
       aws_api_gateway_method.method_users_cors,
 
       aws_api_gateway_method_response.response,
+      aws_api_gateway_method_response.response_post,
       aws_api_gateway_method_response.response_cors,
       aws_api_gateway_method_response.response_conv_cors,
       aws_api_gateway_method_response.response_conv_get,
@@ -807,6 +837,7 @@ resource "aws_api_gateway_deployment" "deployment" {
       aws_api_gateway_method_response.response_users_cors,
 
       aws_api_gateway_integration.integration,
+      aws_api_gateway_integration.integration_post,
       aws_api_gateway_integration.integration_users,
       aws_api_gateway_integration.integration_conv_get,
       aws_api_gateway_integration.integration_conv_post,
@@ -816,6 +847,7 @@ resource "aws_api_gateway_deployment" "deployment" {
 
 
       aws_api_gateway_integration_response.integration_response,
+      aws_api_gateway_integration_response.integration_response_post,
       aws_api_gateway_integration_response.integration_response_users,
       aws_api_gateway_integration_response.integration_res_conv_get,
       aws_api_gateway_integration_response.integration_res_conv_post,
