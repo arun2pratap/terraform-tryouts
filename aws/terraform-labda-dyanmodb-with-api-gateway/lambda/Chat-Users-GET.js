@@ -6,7 +6,7 @@ var cognito = new AWS.CognitoIdentityServiceProvider();
 
 exports.handler = function (event, context, callback) {
     cognito.listUsers({
-        UserPoolId: 'us-east-1_uigBFPMRe',
+        UserPoolId: 'us-east-1_Se3DtD5Ze',
         AttributesToGet: [],
         Filter: '',
         Limit: 60
@@ -14,7 +14,9 @@ exports.handler = function (event, context, callback) {
         if (err === null) {
             var logins = [];
             data.Users.forEach(function (user) {
-                logins.push(user.Username);
+                if(event.cognitoUsername !== user.Username){
+                    logins.push(user.Username);
+                }
             });
             callback(null, logins);
         } else {

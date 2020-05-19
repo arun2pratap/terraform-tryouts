@@ -19,23 +19,23 @@ resource "aws_cognito_user_pool" "pool" {
     "email"]
   auto_verified_attributes = [
     "email"]
-  schema {
-    attribute_data_type = "String"
-    developer_only_attribute = false
-    mutable = true
-    name = "email"
-    number_attribute_constraints {}
-    required = true
-    string_attribute_constraints {
-      max_length = "2048"
-      min_length = "0"
-    }
-  }
+//  schema {
+//    attribute_data_type = "String"
+//    developer_only_attribute = false
+//    mutable = true
+//    name = "email"
+//    number_attribute_constraints {}
+//    required = true
+//    string_attribute_constraints {
+//      max_length = "2048"
+//      min_length = "0"
+//    }
+//  }
   email_configuration {
     email_sending_account = "COGNITO_DEFAULT"
   }
-  email_verification_message = "Your verification code is {####}. "
-  email_verification_subject = "Your verification code"
+  email_verification_message = "Lets Chat App verification code is {####}. "
+  email_verification_subject = "Lets Chat App Your verification code"
   mfa_configuration = "OFF"
   password_policy {
     minimum_length = 6
@@ -64,6 +64,17 @@ resource "aws_cognito_user_pool_client" "client" {
     "email"]
   generate_secret = false
 }
+
+############ Cognito authorizer
+resource "aws_api_gateway_authorizer" "authorizer" {
+  name = "Cognito"
+  type = "COGNITO_USER_POOLS"
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  provider_arns = [aws_cognito_user_pool.pool.arn]
+  identity_source = "method.request.header.Authorization"
+
+}
+############ Cognito authorizer
 
 ########## end Create Congntio user
 resource "aws_iam_role" "role" {
@@ -230,7 +241,7 @@ resource "aws_api_gateway_rest_api" "api" {
   # Valid values: EDGE, REGIONAL or PRIVATE
   endpoint_configuration {
     types = [
-      "REGIONAL"]
+      "EDGE"]
   }
 }
 resource "aws_api_gateway_resource" "resource" {
@@ -247,7 +258,8 @@ resource "aws_api_gateway_method" "method" {
   rest_api_id = aws_api_gateway_rest_api.api.id
   resource_id = aws_api_gateway_resource.resource.id
   http_method = "GET"
-  authorization = "NONE"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.authorizer.id
 }
 
 resource "aws_api_gateway_integration" "integration" {
@@ -259,44 +271,14 @@ resource "aws_api_gateway_integration" "integration" {
   passthrough_behavior = "WHEN_NO_TEMPLATES"
   request_templates = {
     "application/json" : <<EOF
+#set($inputRoot = $input.path('$'))
 {
-  "cognitoUsername":"Student"
+    "cognitoUsername": "$context.authorizer.claims['cognito:username']"
 }
 EOF
   }
   type = "AWS"
   uri = aws_lambda_function.lambda_conversation_get.invoke_arn
-}
-
-resource "aws_api_gateway_model" "conversationList" {
-  rest_api_id = aws_api_gateway_rest_api.api.id
-  name = "ConverstationList"
-  description = "a JSON schema"
-  content_type = "application/json"
-
-  schema = <<EOF
-{
-  "type": "array",
-  "items": {
-    "type": "object",
-    "properties": {
-      "id": {
-        "type": "string"
-      },
-      "participants": {
-        "type": "array",
-        "items": {
-          "type": "string"
-        }
-      },
-      "last": {
-        "type": "number",
-        "format": "utc-millisec"
-      }
-    }
-  }
-}
-EOF
 }
 
 resource "aws_api_gateway_method_response" "response" {
@@ -328,27 +310,12 @@ resource "aws_api_gateway_integration_response" "integration_response" {
 # end of converstaions GET
 # start for conversations POST
 
-resource "aws_api_gateway_model" "newConversation" {
-  rest_api_id = aws_api_gateway_rest_api.api.id
-  name = "newConversation"
-  description = "a JSON schema"
-  content_type = "application/json"
-
-  schema = <<EOF
-{
-  "type": "array",
-  "items": {
-    "type": "string"
-  }
-}
-EOF
-}
-
 resource "aws_api_gateway_method" "method_post" {
   rest_api_id = aws_api_gateway_rest_api.api.id
   resource_id = aws_api_gateway_resource.resource.id
   http_method = "POST"
-  authorization = "NONE"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.authorizer.id
   request_models = {
     "application/json" : aws_api_gateway_model.newConversation.name
   }
@@ -364,7 +331,7 @@ resource "aws_api_gateway_integration" "integration_post" {
     "application/json": <<EOF
 #set($inputRoot = $input.path('$'))
 {
-"cognitoUsername": "Student",
+"cognitoUsername": "$context.authorizer.claims['cognito:username']",
 "users":
 [
 #foreach($elem in $inputRoot)
@@ -379,15 +346,7 @@ resource "aws_api_gateway_integration" "integration_post" {
   type = "AWS"
   uri = aws_lambda_function.lambda_conversation_post.invoke_arn
 }
-resource "aws_api_gateway_model" "conversationId" {
-  rest_api_id = aws_api_gateway_rest_api.api.id
-  name = "conversationId"
-  description = "a JSON schema"
-  content_type = "application/json"
-  schema = <<EOF
-{"type":"string"}
-EOF
-}
+
 resource "aws_api_gateway_method_response" "response_post" {
   rest_api_id = aws_api_gateway_rest_api.api.id
   resource_id = aws_api_gateway_resource.resource.id
@@ -430,7 +389,8 @@ resource "aws_api_gateway_method" "method_conv_GET" {
   rest_api_id = aws_api_gateway_rest_api.api.id
   resource_id = aws_api_gateway_resource.resource_conv.id
   http_method = "GET"
-  authorization = "NONE"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.authorizer.id
 }
 
 resource "aws_api_gateway_integration" "integration_conv_get" {
@@ -444,6 +404,7 @@ resource "aws_api_gateway_integration" "integration_conv_get" {
     "application/json": <<EOF
 #set($inputRoot = $input.path('$'))
 {
+    "cognitoUsername": "$context.authorizer.claims['cognito:username']",
     "id": "$input.params('id')"
 }
   EOF
@@ -451,51 +412,6 @@ resource "aws_api_gateway_integration" "integration_conv_get" {
 
   type = "AWS"
   uri = aws_lambda_function.lambda_message_get.invoke_arn
-}
-
-resource "aws_api_gateway_model" "conversations" {
-  rest_api_id = aws_api_gateway_rest_api.api.id
-  name = "Converstation"
-  description = "a JSON schema"
-  content_type = "application/json"
-  schema = <<EOF
-{
-  "type": "object",
-  "properties": {
-    "id": {
-      "type": "string"
-    },
-    "participants": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "last": {
-      "type": "number",
-      "format": "utc-millisec"
-    },
-    "messages": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "sender": {
-            "type": "string"
-          },
-          "time": {
-            "type": "number",
-            "format": "utc-millisec"
-          },
-          "message": {
-            "type": "string"
-          }
-        }
-      }
-    }
-  }
-}
-EOF
 }
 
 resource "aws_api_gateway_method_response" "response_conv_get" {
@@ -526,23 +442,12 @@ resource "aws_api_gateway_integration_response" "integration_res_conv_get" {
 }
 ### MESSAGE post API gateway flow
 
-resource "aws_api_gateway_model" "newMessage" {
-  rest_api_id = aws_api_gateway_rest_api.api.id
-  name = "NewMessage"
-  description = "a JSON schema"
-  content_type = "application/json"
-  schema = <<EOF
-{
-  "type": "string"
-}
-EOF
-}
-
 resource "aws_api_gateway_method" "method_conv_POST" {
   rest_api_id = aws_api_gateway_rest_api.api.id
   resource_id = aws_api_gateway_resource.resource_conv.id
   http_method = "POST"
-  authorization = "NONE"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.authorizer.id
   request_models = {
     "application/json" : aws_api_gateway_model.newMessage.name
   }
@@ -556,12 +461,12 @@ resource "aws_api_gateway_integration" "integration_conv_post" {
   passthrough_behavior = "WHEN_NO_TEMPLATES"
   request_templates = {
     "application/json" :  <<EOF
-  #set($inputRoot = $input.path('$'))
-  {
-      "id": "$input.params('id')",
-      "message": "$inputRoot",
-      "cognitoUsername": "Student"
-  }
+ #set($inputRoot = $input.path('$'))
+{
+    "cognitoUsername": "$context.authorizer.claims['cognito:username']",
+    "id": "$input.params('id')",
+    "message": "$inputRoot"
+}
 EOF
   }
   type = "AWS"
@@ -606,7 +511,8 @@ resource "aws_api_gateway_method" "method_users" {
   rest_api_id = aws_api_gateway_rest_api.api.id
   resource_id = aws_api_gateway_resource.resource_users.id
   http_method = "GET"
-  authorization = "NONE"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.authorizer.id
 }
 
 resource "aws_api_gateway_integration" "integration_users" {
@@ -615,29 +521,19 @@ resource "aws_api_gateway_integration" "integration_users" {
   http_method = aws_api_gateway_method.method_users.http_method
   # ANY won't work for integration_http_method
   integration_http_method = "POST"
-//  passthrough_behavior = "WHEN_NO_TEMPLATES"
-//  request_templates = {
-//    "application/json" : "Empty"
-//  }
+  passthrough_behavior = "WHEN_NO_TEMPLATES"
+  request_templates = {
+    "application/json" :  <<EOF
+ #set($inputRoot = $input.path('$'))
+#set($inputRoot = $input.path('$'))
+{
+    "cognitoUsername": "$context.authorizer.claims['cognito:username']"
+}
+EOF
+  }
   type = "AWS"
   uri = aws_lambda_function.lambda_users_get.invoke_arn
 }
-
-resource "aws_api_gateway_model" "userList" {
-  rest_api_id = aws_api_gateway_rest_api.api.id
-  name = "usersList"
-  description = "a JSON schema"
-  content_type = "application/json"
-  schema = <<EOF
-{
-  "type":"array",
-  "items": {
-    "type":"string"
-  }
-}
-EOF
-}
-
 
 resource "aws_api_gateway_method_response" "response_users" {
   rest_api_id = aws_api_gateway_rest_api.api.id
@@ -808,8 +704,7 @@ resource "aws_api_gateway_integration_response" "integration_users_res_cors" {
     "method.response.header.Access-Control-Allow-Origin" = "'*'"
   }
 }
-############
-
+##########
 # dploy lambda funciton
 # aws_api_gateway_deployment is flaky try commenting/un-commenting depends_on it works, yup silly but it works, terraform mess up the sequence of resource.
 resource "aws_api_gateway_deployment" "deployment" {
@@ -861,6 +756,137 @@ resource "aws_api_gateway_deployment" "deployment" {
     create_before_destroy = true
   }
 }
+#########################  model models
+
+resource "aws_api_gateway_model" "conversationList" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  name = "ConverstationList"
+  description = "a JSON schema"
+  content_type = "application/json"
+
+  schema = <<EOF
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "participants": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "last": {
+        "type": "number",
+        "format": "utc-millisec"
+      }
+    }
+  }
+}
+EOF
+}
+
+resource "aws_api_gateway_model" "newConversation" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  name = "newConversation"
+  description = "a JSON schema"
+  content_type = "application/json"
+
+  schema = <<EOF
+{
+  "type": "array",
+  "items": {
+    "type": "string"
+  }
+}
+EOF
+}
+resource "aws_api_gateway_model" "conversationId" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  name = "conversationId"
+  description = "a JSON schema"
+  content_type = "application/json"
+  schema = <<EOF
+{"type":"string"}
+EOF
+}
+
+resource "aws_api_gateway_model" "conversations" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  name = "Converstation"
+  description = "a JSON schema"
+  content_type = "application/json"
+  schema = <<EOF
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "participants": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "last": {
+      "type": "number",
+      "format": "utc-millisec"
+    },
+    "messages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "sender": {
+            "type": "string"
+          },
+          "time": {
+            "type": "number",
+            "format": "utc-millisec"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
+EOF
+}
+
+resource "aws_api_gateway_model" "newMessage" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  name = "NewMessage"
+  description = "a JSON schema"
+  content_type = "application/json"
+  schema = <<EOF
+{
+  "type": "string"
+}
+EOF
+}
+
+resource "aws_api_gateway_model" "userList" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  name = "usersList"
+  description = "a JSON schema"
+  content_type = "application/json"
+  schema = <<EOF
+{
+  "type":"array",
+  "items": {
+    "type":"string"
+  }
+}
+EOF
+}
+
+########################
 
 ###### dynamo db  tables for lambda to read from UNCOMMENT the code below
 /*

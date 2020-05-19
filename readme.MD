@@ -81,5 +81,35 @@ EOF
     * API gateway configuration for the same
   * Another lambda function to post conversation to DynamoDB
     * API gateway configuration for the same.
-    
    
+  * npm install --save amazon-cognito-identity-js
+    * copy node_modules\amazon-cognito-identity-js\dist\amazon-cognito-identity.min.js to our /js/ folder
+  
+  * Update Config.js with 
+  ```javascript
+var poolData = {
+    UserPoolId: 'us-east-1_f5W2BETw2',
+    ClientId: '4nffgdp2be4ansrgrkd5qnflht'
+};
+```
+* create a cognito authorizer for API.
+* updated all the API Gateway's to use Cognito authentication.
+   
+   
+Note: Though everything has been changed updated in repository, for purpose of note.
+* Update Config.js with 
+    ```javascript
+  var poolData = {
+      UserPoolId: 'us-east-1_f5W2BETw2',
+      ClientId: '4nffgdp2be4ansrgrkd5qnflht'
+  };
+  ```
+* npm install --save amazon-cognito-identity-js
+    * copy node_modules\amazon-cognito-identity-js\dist\amazon-cognito-identity.min.js to our /js/ folder
+* Chat-Conversation-POST. //  const uuidV4 = require('uuid/v4'); // doesnot work's.
+    * isntead use context.awsRequestId; // it's unique.
+* Chat-Users-GET.js // update UserPoolId: 'us-east-1_Se3DtD5Ze',
+* Downloading api gateway SDK from  STAGE -> generator generator- and will use that in our script's. In site.js now can use use apiGateWayClient instead of using gateway endpoint.
+  * Put in the apiGateway-js-sdk in /js/ folder.
+  * apiGateway-js-sdk/appClient.js -- replace parseParametersToObject(params, [])) with parseParametersToObject(params, ["id"]))
+  * apiGateway-js-sdk/readme.md - the include .js files need to be included in .HTML * chats.html, chat.html

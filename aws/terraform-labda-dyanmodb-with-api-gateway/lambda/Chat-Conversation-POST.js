@@ -1,13 +1,13 @@
 'use strict';
 
-const uuidV4 = require('uuid/v4');
+// const uuidV4 = require('uuid/v4');
 
 var AWS = require('aws-sdk');
 
 var dynamo = new AWS.DynamoDB();
 
 exports.handler = function (event, context, callback) {
-    var id = uuidV4();
+    var id = context.awsRequestId;
     var users = event.users;
     users.push(event.cognitoUsername);
     var records = [];
